@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pong</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #fff;
+            font-family: 'Press Start 2P', cursive;
+            flex-direction: column;
+            gap: 20px;
+        }
+        #game-container {
+            position: relative;
+            border: 5px solid #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5), 0 0 50px rgba(255, 255, 255, 0.3);
+            background-color: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            max-width: 80vw;
+            max-height: 80vh;
+            aspect-ratio: 4 / 3;
+        }
+        #game-canvas {
+            display: block;
+            background-color: #000;
+        }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            color: #fff;
+            text-shadow: 2px 2px 5px rgba(255,255,255,0.5);
+            z-index: 10;
+        }
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 15px;
+            border: 2px solid #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            animation: fadeIn 1s forwards;
+            z-index: 20;
+        }
+        #start-screen h1, #game-over-screen h2 {
+            font-size: 2em;
+            color: #fff;
+            text-shadow: 0 0 10px #fff;
+            margin-bottom: 20px;
+        }
+        #start-screen p {
+            font-size: 0.8em;
+            margin-bottom: 30px;
+        }
+        .game-button {
+            padding: 15px 30px;
+            font-size: 1em;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+            border: none;
+            border-radius: 10px;
+            background: #fff;
+            color: #000;
+            text-shadow: none;
+            box-shadow: 0 5px 15px rgba(255, 255, 255, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 5px;
+        }
+        .game-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(255, 255, 255, 0.6);
+        }
+        #game-over-screen {
+            display: none;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+    </div>
+
+    <div id="start-screen">
+        <h1>PONG</h1>
+        <p>Use the **Arrow Keys** to move.</p>
+        <button id="start-button" class="game-button">START GAME</button>
+    </div>
+
+    <div id="game-over-screen">
+        <h2>GAME OVER</h2>
+        <p>Final Score: <span id="final-score">0</span></p>
+        <button id="restart-button" class="game-button">RESTART</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const restartButton = document.getElementById('restart-button');
+        const finalScoreElement = document.getElementById('final-score');
+
+        // Game state
+        let gameRunning = false;
+        let player, computer, ball;
+        let playerScore = 0;
+        let computerScore = 0;
+
+        function setCanvasSize() {
+            const container = document.getElementById('game-container');
+            const aspectRatio = 4 / 3;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            if (containerWidth / containerHeight > aspectRatio) {
+                canvas.height = containerHeight;
+                canvas.width = containerHeight * aspectRatio;
+            } else {
+                canvas.width = containerWidth;
+                canvas.height = containerWidth / aspectRatio;
+            }
+        }
+
+        // Paddle class
+        class Paddle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 10;
+                this.height = 75;
+                this.speed = 8;
+            }
+
+            draw() {
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 5;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // Ball class
+        class Ball {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.size = 10;
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                const randomAngle = Math.random() * Math.PI / 2 - Math.PI / 4;
+                this.dx = Math.cos(randomAngle) * 5 * (Math.random() > 0.5 ? 1 : -1);
+                this.dy = Math.sin(randomAngle) * 5;
+            }
+
+            draw() {
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 5;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function init() {
+            setCanvasSize();
+            player = new Paddle(20, canvas.height / 2 - 37.5);
+            computer = new Paddle(canvas.width - 30, canvas.height / 2 - 37.5);
+            ball = new Ball();
+            playerScore = 0;
+            computerScore = 0;
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Move player paddle
+            if (keys['ArrowUp'] && player.y > 0) {
+                player.y -= player.speed;
+            }
+            if (keys['ArrowDown'] && player.y < canvas.height - player.height) {
+                player.y += player.speed;
+            }
+
+            // Simple AI for computer paddle
+            const computerTargetY = ball.y - computer.height / 2;
+            if (computer.y < computerTargetY) {
+                computer.y += Math.min(computer.speed, computerTargetY - computer.y);
+            } else if (computer.y > computerTargetY) {
+                computer.y -= Math.min(computer.speed, computer.y - computerTargetY);
+            }
+
+            // Move ball
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Wall collision
+            if (ball.y < 0 || ball.y > canvas.height - ball.size) {
+                ball.dy *= -1;
+            }
+
+            // Player paddle collision
+            if (ball.x < player.x + player.width &&
+                ball.x + ball.size > player.x &&
+                ball.y < player.y + player.height &&
+                ball.y + ball.size > player.y) {
+                ball.dx *= -1.1; // Increase speed slightly on hit
+                ball.dx = Math.min(ball.dx, 15); // Cap speed
+            }
+
+            // Computer paddle collision
+            if (ball.x < computer.x + computer.width &&
+                ball.x + ball.size > computer.x &&
+                ball.y < computer.y + computer.height &&
+                ball.y + ball.size > computer.y) {
+                ball.dx *= -1.1; // Increase speed slightly on hit
+                ball.dx = Math.max(ball.dx, -15); // Cap speed
+            }
+
+            // Score update
+            if (ball.x < 0) {
+                computerScore++;
+                checkWin();
+                ball.reset();
+            } else if (ball.x > canvas.width) {
+                playerScore++;
+                checkWin();
+                ball.reset();
+            }
+            
+            draw();
+        }
+
+        function checkWin() {
+            if (playerScore >= 5) {
+                endGame("You Win!");
+            } else if (computerScore >= 5) {
+                endGame("You Lose!");
+            }
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw center line
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillRect(canvas.width / 2 - 2, 0, 4, canvas.height);
+
+            // Draw scores
+            ctx.font = '24px "Press Start 2P"';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(playerScore, canvas.width / 4, 40);
+            ctx.fillText(computerScore, canvas.width * 3 / 4, 40);
+
+            player.draw();
+            computer.draw();
+            ball.draw();
+        }
+
+        function gameLoop() {
+            update();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            gameRunning = true;
+            init();
+            gameLoop();
+        }
+
+        function endGame(message) {
+            gameRunning = false;
+            finalScoreElement.textContent = message;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // Event listeners
+        const keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+        });
+        window.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+
+        window.addEventListener('resize', init);
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodger</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #fff;
+            font-family: 'Press Start 2P', cursive;
+            flex-direction: column;
+            gap: 20px;
+        }
+        #game-container {
+            position: relative;
+            border: 5px solid #00c6ff;
+            box-shadow: 0 0 20px rgba(0, 198, 255, 0.5), 0 0 50px rgba(0, 198, 255, 0.3);
+            background-color: #2e2e4e;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        #game-canvas {
+            display: block;
+        }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            color: #00c6ff;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(46, 46, 78, 0.9);
+            padding: 40px;
+            border-radius: 15px;
+            border: 2px solid #00c6ff;
+            box-shadow: 0 0 20px rgba(0, 198, 255, 0.5);
+            animation: fadeIn 1s forwards;
+            z-index: 20;
+        }
+        #start-screen h1, #game-over-screen h2 {
+            font-size: 2em;
+            color: #00c6ff;
+            text-shadow: 0 0 10px #00c6ff;
+            margin-bottom: 20px;
+        }
+        #start-screen p {
+            font-size: 0.8em;
+            margin-bottom: 30px;
+        }
+        .game-button {
+            padding: 15px 30px;
+            font-size: 1em;
+            font-family: 'Press Start 2P', cursive;
+            cursor: pointer;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(45deg, #00c6ff, #0072ff);
+            color: #fff;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 5px;
+        }
+        .game-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+        }
+        #game-over-screen {
+            display: none;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-board">Score: 0</div>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+    </div>
+
+    <div id="start-screen">
+        <h1>DODGER</h1>
+        <p>Use the **Arrow Keys** to move.</p>
+        <button id="start-button" class="game-button">START GAME</button>
+    </div>
+
+    <div id="game-over-screen">
+        <h2>GAME OVER</h2>
+        <p>Final Score: <span id="final-score">0</span></p>
+        <button id="restart-button" class="game-button">RESTART</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const restartButton = document.getElementById('restart-button');
+        const scoreBoard = document.getElementById('score-board');
+        const finalScoreElement = document.getElementById('final-score');
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let player, blocks, keys, spawnInterval, scoreInterval;
+        let blockSpeed = 2;
+        let spawnRate = 1000;
+
+        function setCanvasSize() {
+            canvas.width = Math.min(window.innerWidth * 0.8, 600);
+            canvas.height = Math.min(window.innerHeight * 0.8, 800);
+        }
+
+        // Player class
+        class Player {
+            constructor() {
+                this.width = 50;
+                this.height = 20;
+                this.x = (canvas.width / 2) - (this.width / 2);
+                this.y = canvas.height - this.height - 20;
+                this.speed = 5;
+            }
+
+            draw() {
+                ctx.fillStyle = '#ff1a8c';
+                ctx.shadowColor = '#ff1a8c';
+                ctx.shadowBlur = 10;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.shadowBlur = 0;
+            }
+
+            update() {
+                if (keys['ArrowLeft'] && this.x > 0) {
+                    this.x -= this.speed;
+                }
+                if (keys['ArrowRight'] && this.x < canvas.width - this.width) {
+                    this.x += this.speed;
+                }
+            }
+        }
+
+        // Block class
+        class Block {
+            constructor() {
+                this.size = Math.random() * 30 + 20;
+                this.x = Math.random() * (canvas.width - this.size);
+                this.y = -this.size;
+                this.speed = blockSpeed + Math.random() * 1.5;
+            }
+
+            draw() {
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 5;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.shadowBlur = 0;
+            }
+
+            update() {
+                this.y += this.speed;
+            }
+        }
+
+        function init() {
+            setCanvasSize();
+            player = new Player();
+            blocks = [];
+            keys = {};
+            score = 0;
+            blockSpeed = 2;
+            spawnRate = 1000;
+            updateScore();
+        }
+
+        function spawnBlock() {
+            blocks.push(new Block());
+        }
+
+        function updateScore() {
+            scoreBoard.textContent = `Score: ${score}`;
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            player.update();
+            player.draw();
+
+            blocks.forEach((block, index) => {
+                block.update();
+                block.draw();
+
+                // Collision detection
+                if (
+                    player.x < block.x + block.size &&
+                    player.x + player.width > block.x &&
+                    player.y < block.y + block.size &&
+                    player.y + player.height > block.y
+                ) {
+                    endGame();
+                    return;
+                }
+
+                // Remove blocks that are off-screen
+                if (block.y > canvas.height) {
+                    blocks.splice(index, 1);
+                }
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            gameRunning = true;
+            init();
+            spawnInterval = setInterval(spawnBlock, spawnRate);
+            scoreInterval = setInterval(() => {
+                score++;
+                updateScore();
+                // Increase difficulty over time
+                if (score % 20 === 0) {
+                    blockSpeed += 0.5;
+                    clearInterval(spawnInterval);
+                    spawnRate = Math.max(200, spawnRate - 50);
+                    spawnInterval = setInterval(spawnBlock, spawnRate);
+                }
+            }, 1000);
+            gameLoop();
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(spawnInterval);
+            clearInterval(scoreInterval);
+            finalScoreElement.textContent = score;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        // Event listeners
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+        });
+        window.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+
+        window.addEventListener('resize', setCanvasSize);
+    </script>
+</body>
+</html>
+
